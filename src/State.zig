@@ -853,7 +853,7 @@ fn wrapStateFunc(comptime func: WrappedFunc) *const fn (?*c.lua_State) callconv(
 }
 
 test State {
-    const state: State = try .init();
+    const state: State = try .initL();
     defer state.deinit();
 
     state.openlibs();
@@ -873,10 +873,10 @@ test State {
     const bytecode = lua.compile(code, null);
     defer std.heap.c_allocator.free(bytecode);
 
-    state.load("=usercode", bytecode, 0) catch |err| {
-        std.log.err("{}: {s}", .{ err, state.popTopString() });
-        return err;
-    };
+    if (state.load("=usercode", bytecode, 0)) {
+        std.log.err("{?s}", .{state.popTopString()});
+        return error.LuaLoadError;
+    }
 
     const thread = try state.newthread();
 
@@ -887,7 +887,7 @@ test State {
     state.pushcfunction(c_add, "add");
     state.setglobal("add");
 
-    thread.coResume(.none, 0) catch |err| {
+    _ = thread.coResume(.none, 0) catch |err| {
         defer std.debug.unlockStderr();
         thread.logStackBacktrace(err, &std.debug.lockStderr(&.{}).file_writer.interface) catch |e|
             std.log.err("couldn't log backtrace: {}", .{e});
@@ -916,7 +916,7 @@ test State {
     state.pop(1);
 }
 
-fn c_add(state: State) c_int {
+fn c_add(state: State) !c_int {
     const a = state.checknumber(1);
     const b = state.checknumber(2);
     state.pushnumber(a + b);
